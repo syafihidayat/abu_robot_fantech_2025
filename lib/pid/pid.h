@@ -33,8 +33,7 @@ private:
     float angular_vel_Filt = 0;
     float angular_vel = 0;
 
-    float total_gear_ratio = 19.2;
-    float enc_ppr = 200;
+    float PPR = 0;
 
     float error_integral;
     float error_previous;
@@ -46,17 +45,15 @@ public:
     PID(float MIN_VAL, float MAX_VAL, float kp_, float ki_, float kd_);
     void parameter(float kp_, float ki_, float kd_);
     void parameterT(float kp_, float ki_, float kd_);
+    void ppr_total(float total_ppr);
 
     float control_angle(float target, float enc, float pwm, float deltaT);
     float control_angle_speed(float target_angle, float target_speed, float enc, float deltaT);
     float control_base(float error, float speed, int condition, float deltaT);
     float control_speed(float target, float enc, float deltaT);
-    float control_speed_base(float target, float enc, float deltaT);
     float control_default(float target, float curr, float deltaT);
 
-
-  float get_filt_vel();
-  float get_error();
+    float get_filt_vel();
 };
 
 #endif

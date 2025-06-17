@@ -43,6 +43,14 @@
 #define drib_ki 0.1  // 0 //0.0001 // 0.00006
 #define drib_kd 0.0 // 0  //0 //0.000015
 
+#define ESC_UP_KP 50 //7//5 //35
+#define ESC_UP_KI 1 //10 //10  //2
+#define ESC_UP_KD 0
+
+#define ESC_DOWN_KP 50 //7 //5 //35
+#define ESC_DOWN_KI 1 //10 //10 //2
+#define ESC_DOWN_KD 0
+
 /*
 ROBOT ORIENTATION
          FRONT
@@ -98,6 +106,12 @@ LEFT  = Y
 #define MOTOR1_ENCODER_A 15          //20
 #define MOTOR1_ENCODER_B 14          //21
 
+#define launcher_up_A 28
+#define launcher_up_B 29 
+
+#define launcher_down_A 37
+#define launcher_down_B 36
+
 // #define MotorDrib_enca 26
 // #define MotorDrib_encb 27
 
@@ -119,23 +133,25 @@ LEFT  = Y
 
 // #define MOTOR3_PWM -1 // DON'T TOUCH THIS! This is just a placeholder
 #define MOTOR1_IN_A 1          //22 // 1
-#define MOTOR1_IN_B 2          //23 // 1
+#define MOTOR1_IN_B 2         //23 // 1
 
 // #define MOTOR4_PWM -1 // DON'T TOUCH THIS! This is just a placeholder
 
-#define limitTop 38
+#define limitTop 99 // 38
 #define limitBottom 39
-#define MOTOR_Up 36
-#define MOTOR_Down 37
+#define MOTOR_Up 98  //36
+#define MOTOR_Down 97 //37
 
-#define esc_up 40
-#define esc_down 41
+#define esc_up 24
+#define esc_down 25
 
-#define MOTOR_RELOAD_INA 28  //24
-#define MOTOR_RELOAD_INB 29  //25
+#define MOTOR_RELOAD_INA  96//28  //24
+#define MOTOR_RELOAD_INB  95//29  //25
 
-#define proxi_Front 34
-#define proxi_Behind 26
+// #define proxi_Front 34
+// #define proxi_Behind 26
+
+#define solShoot 38
 
 // IMU 18,19 / SDA0,SCL0
 

@@ -23,9 +23,12 @@ void dribble_pneumatic();
 void button_list(uint32_t buttons, int joy_axis);
 void Motor_UpDown(float speed_go, float speed_break);
 void moveMotor(float angle, float pwm);
-void shooterMotor(float launch_dt);
+void shooterMotor();
+void readEncoderA();
+void readEncoderB();
 
 void MotorJump();
+void slinderGo();
 
 USBHost usb_joy;
 USBHub joy_hub(usb_joy);
@@ -64,16 +67,20 @@ unsigned long prev_cmd_time = 0;
 unsigned long prev_odom_update = 0;
 unsigned long prevT = 0;
 
-Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire);									// try  another i2c wire/wire1
-const int enca[4] = {MOTOR1_ENCODER_A, MOTOR3_ENCODER_A, MOTOR4_ENCODER_A}; // MotorDrib_enca};
-const int encb[4] = {MOTOR1_ENCODER_B, MOTOR3_ENCODER_B, MOTOR4_ENCODER_B}; // MotorDrib_encb};
-volatile long pos[4];
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire);														// try  another i2c wire/wire1
+const int enca[5] = {MOTOR1_ENCODER_A, MOTOR3_ENCODER_A, MOTOR4_ENCODER_A, launcher_up_A, launcher_down_A}; // MotorDrib_enca};
+const int encb[5] = {MOTOR1_ENCODER_B, MOTOR3_ENCODER_B, MOTOR4_ENCODER_B, launcher_up_B, launcher_down_B}; // MotorDrib_encb};
+volatile long pos[5];
+volatile long poseEnc_up;
+volatile long poseEnc_down;
 
 PID wheel1(PWM_MIN, PWM_MAX, K_P, K_I, K_D);
 PID wheel2(PWM_MIN, PWM_MAX, K_P, K_I, K_D);
 PID wheel3(PWM_MIN, PWM_MAX, K_P, K_I, K_D);
 PID wheel4(PWM_MIN, PWM_MAX, K_P, K_I, K_D);
 PID dribble(PWM_MIN, PWM_MAX, drib_kp, drib_ki, drib_kd);
+PID launcher_up(0, 180, ESC_UP_KP, ESC_UP_KI, ESC_UP_KD);
+PID launcher_down(0, 180, ESC_DOWN_KP, ESC_DOWN_KI, ESC_DOWN_KD);
 
 Kinematic kinematic(
 	Kinematic::LINO_BASE,
@@ -99,7 +106,7 @@ void setup()
 	esc_first.attach(esc_up, 1000, 2000);
 	esc_second.attach(esc_down, 1000, 2000);
 
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 5; i++)
 	{
 		pinMode(cw[i], OUTPUT);
 		pinMode(ccw[i], OUTPUT);
@@ -134,27 +141,51 @@ void setup()
 
 		pinMode(enca[i], INPUT);
 		pinMode(encb[i], INPUT);
+
+		pinMode(launcher_up_A, INPUT);
+		pinMode(launcher_up_B, INPUT);
+		pinMode(launcher_down_A, INPUT);
+		pinMode(launcher_down_B, INPUT);
+		pinMode(enca[i], INPUT);
+		pinMode(encb[i], INPUT);
 	}
 
 	pinMode(limitTop, INPUT_PULLUP);
 	pinMode(limitBottom, INPUT_PULLUP);
 
-	pinMode(proxi_Front, INPUT_PULLUP);
-	pinMode(proxi_Behind, INPUT_PULLUP);
+	pinMode(solShoot, OUTPUT);
+
+	digitalWrite(solShoot, LOW);
+
+	// pinMode(proxi_Front, INPUT_PULLUP);
+	// pinMode(proxi_Behind, INPUT_PULLUP);
 
 	// pinMode(solDrib, OUTPUT);
 	// pinMode(solGrip, OUTPUT);
 
 	// pinMode(pwm_pin, OUTPUT);
 
+	wheel1.ppr_total(COUNTS_PER_REV1);
+	wheel2.ppr_total(COUNTS_PER_REV2);
+	wheel3.ppr_total(COUNTS_PER_REV3);
+
+	launcher_up.ppr_total(1024);
+	launcher_down.ppr_total(1024);
+
 	attachInterrupt(digitalPinToInterrupt(enca[0]), readEncoder<0>, RISING);
 	attachInterrupt(digitalPinToInterrupt(enca[1]), readEncoder<1>, RISING);
 	attachInterrupt(digitalPinToInterrupt(enca[2]), readEncoder<2>, RISING);
-	attachInterrupt(digitalPinToInterrupt(enca[3]), readEncoder<3>, RISING);
+
+	attachInterrupt(digitalPinToInterrupt(launcher_up_A), readEncoderA, RISING);
+	attachInterrupt(digitalPinToInterrupt(launcher_down_A), readEncoderB, RISING);
+	// attachInterrupt(digitalPinToInterrupt(enca[5]), readEncoder<5>, RISING);
+
+	esc_first.write(0);
+	esc_second.write(0);
 
 	pinMode(LED_PIN, OUTPUT);
 
-	setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, 0);
+	// setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, 0);
 }
 
 float toDeg(float rad)
@@ -166,6 +197,12 @@ int numbers[8]; // adjust size as needed
 double value_upper_launcher = 0;
 double value_lower_launcher = 0;
 unsigned long launch_prevT = 0;
+
+bool turn_on_roller = false;
+
+float upper_target = 0;
+float lower_target = 0;
+
 String inputString;
 
 int applyDeadzone(int value, int deadzone = 20)
@@ -180,81 +217,119 @@ int applyDeadzone(int value, int deadzone = 20)
 // int sign= 0;
 void loop()
 {
-	// usb_joy.Task();
+	usb_joy.Task();
 
-	// unsigned long launch_currT = micros();
-	// float launch_dt = ((float)(launch_currT - launch_prevT)) / 1.0e6;
+	unsigned long launch_currT = micros();
+	float launch_dt = ((float)(launch_currT - launch_prevT)) / 1.0e6;
 
-	// int limit_A = digitalRead(limitBottom);
-	// int limit_B = digitalRead(limitTop);
+	int limit_A = digitalRead(limitBottom);
+	int limit_B = digitalRead(limitTop);
 
-	// if (((limit_A == 1 && limit_B == 0)||(limit_A == 0 && limit_B == 1)) &&
-	// 	!(button.LB == 1))
-	// {
-	// 	setMotor(MOTOR_Up, MOTOR_Down, 0);
-	// }
+	if (((limit_A == 1 && limit_B == 0) || (limit_A == 0 && limit_B == 1)) &&
+		!(button.LB == 1))
+	{
+		setMotor(MOTOR_Up, MOTOR_Down, 0);
+	}
 
-	// if (joy_control[0].available())
-	// {
-	// 	uint32_t buttons = joy_control[0].getButtons();
-	// 	button_list(buttons, joy_control[0].getAxis(9));
+	if (joy_control[0].available())
+	{
+		uint32_t buttons = joy_control[0].getButtons();
+		button_list(buttons, joy_control[0].getAxis(9));
 
-	// 	joystick.axis1_x = applyDeadzone(joy_control[0].getAxis(1) - 128);
-	// 	joystick.axis1_y = applyDeadzone(joy_control[0].getAxis(0) - 128);
-	// 	joystick.axis0_x = applyDeadzone(joy_control[0].getAxis(5) - 128);
-	// 	joystick.axis0_y = applyDeadzone(joy_control[0].getAxis(2) - 128);
+		joystick.axis1_x = applyDeadzone(joy_control[0].getAxis(1) - 128);
+		joystick.axis1_y = applyDeadzone(joy_control[0].getAxis(0) - 128);
+		joystick.axis0_x = applyDeadzone(joy_control[0].getAxis(5) - 128);
+		joystick.axis0_y = applyDeadzone(joy_control[0].getAxis(2) - 128);
 
-	// 	MotorJump();
-	// 	moveBase();
-	// 	shooterMotor(launch_dt);
-	// }
+		MotorJump();
+		moveBase();
+		shooterMotor();
+		slinderGo();
+	}
+
+	if (turn_on_roller)
+	{
+		upper_target = 50;
+		lower_target = 50;
+	}
+	else
+	{
+
+		upper_target = 0;
+		lower_target = 0;
+	}
+
+	float launcher_upper_controlled = launcher_up.control_speed(upper_target, -poseEnc_up, launch_dt);
+	float launcher_lower_controlled = launcher_down.control_speed(lower_target, poseEnc_down, launch_dt);
+
+	if (fabs(upper_target) < 0.02)
+	{
+		launcher_upper_controlled = 0.0;
+	}
+	if (fabs(lower_target) < 0.02)
+	{
+		launcher_lower_controlled = 0.0;
+	}
+
+	esc_first.write(abs(launcher_upper_controlled));
+	esc_second.write(abs(launcher_lower_controlled));
+	// Serial.print(200);
+	// Serial.print(" , ");
+	Serial.print(launcher_up.get_filt_vel());
+	Serial.print(" , ");
+	Serial.print(launcher_down.get_filt_vel());
+	Serial.print(" , ");
+	Serial.println(0);
+
+	// Serial.print(poseEnc_up);
+	// Serial.print(" , ");
+	// Serial.println(poseEnc_down);
+
+	launch_prevT = launch_currT;
 
 	// launch_prevT = launch_currT;
 
 	// setMotor( MOTOR_RELOAD_INA,MOTOR_RELOAD_INB,40);
 
-	int sensorValue2 = digitalRead(proxi_Behind);
-	int sensorValue1 = digitalRead(proxi_Front);
+	// int sensorValue2 = digitalRead(proxi_Behind);
+	// int sensorValue1 = digitalRead(proxi_Front);
 
-	if (sensorValue1 == 0 && sign == 0){
-		Serial.print(sensorValue1);
-		setMotor( MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, 170);
-	}
-	else if(sensorValue1 == 1 ){
-		sign = 1;
+	// if (sensorValue1 == 0 && sign == 0){
+	// 	Serial.print(sensorValue1);
+	// 	setMotor( MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, 170);
+	// }
+	// else if(sensorValue1 == 1 ){
+	// 	sign = 1;
 
-		Serial.print(sensorValue1);
-	}
+	// 	Serial.print(sensorValue1);
+	// }
 
-	else if(sign == 1)
-	{
-		setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, -170);
-		if(sensorValue2 == 0 )
-		{
-			sign = 2;
+	// else if(sign == 1)
+	// {
+	// 	setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, -170);
+	// 	if(sensorValue2 == 0 )
+	// 	{
+	// 		sign = 2;
 
-		}
-	}
+	// 	}
+	// }
 
-	else if (sign == 2)
-	{
-		setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, 0);
+	// else if (sign == 2)
+	// {
+	// 	setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, 0);
 
+	// }
 
-	}
-
-	Serial.print(sensorValue1);
-	Serial.print(sensorValue2);
-	Serial.println();
-
+	// Serial.print(sensorValue1);
+	// Serial.print(sensorValue2);
+	// Serial.println();
 
 	// if (digitalRead(proxi_Behind) == LOW) {
-    // 	Serial.println("1");
-  	// }
-  	// else{
-    // 	Serial.println("0");
-  	// }
-
+	// 	Serial.println("1");
+	// }
+	// else{
+	// 	Serial.println("0");
+	// }
 
 	// digitalWrite(MOTOR_Up, -80);
 	// delay(1000);
@@ -268,7 +343,7 @@ void loop()
 
 	// 	Serial.print("0");
 	// }
-	
+
 	// Serial.println("moving");
 	// setMotor(MotorDrib_CW,MotorDrib_CCW, 100);
 	// digitalWrite(MotorDrib_CW,1);
@@ -388,40 +463,40 @@ void Motor_UpDown(float speed_go, float speed_break)
 	}
 }
 
-void LinearMotor(float speed_go, float speed_break)
-{
-	int proxi_A = digitalRead(proxi_Front);
-	int proxi_B = digitalRead(proxi_Behind);
+// void LinearMotor(float speed_go, float speed_break)
+// {
+// 	int proxi_A = digitalRead(proxi_Front);
+// 	int proxi_B = digitalRead(proxi_Behind);
 
-	if(speed_go > 0)
-	{
-		if(proxi_A == 1 && proxi_B == 0)
-		{
-			//break motor
+// 	if(speed_go > 0)
+// 	{
+// 		if(proxi_A == 1 && proxi_B == 0)
+// 		{
+// 			//break motor
 
-		}
-		else
-		{
-			setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, speed_go);
+// 		}
+// 		else
+// 		{
+// 			setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB, speed_go);
 
-		}
-	}else if(speed_go < 0)
-	{
-		if(proxi_A == 0 && proxi_B == 1)
-		{
-			//break motor
-		}
-		else
-		{
-			setMotor(MOTOR_RELOAD_INA, MOTOR_RELOAD_INB,speed_go);
-		}
-	}
-	else
-	{
-		setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB,0);
+// 		}
+// 	}else if(speed_go < 0)
+// 	{
+// 		if(proxi_A == 0 && proxi_B == 1)
+// 		{
+// 			//break motor
+// 		}
+// 		else
+// 		{
+// 			setMotor(MOTOR_RELOAD_INA, MOTOR_RELOAD_INB,speed_go);
+// 		}
+// 	}
+// 	else
+// 	{
+// 		setMotor(MOTOR_RELOAD_INA,MOTOR_RELOAD_INB,0);
 
-	}
-}
+// 	}
+// }
 
 // bool dribble_once = false;
 bool buttonRTPressed = false;
@@ -516,52 +591,52 @@ unsigned long stateTime = 0;
 // 		state = IDLE;
 // 	}
 
-	// if(button.LT == 1 && buttonLTPressed == false){
+// if(button.LT == 1 && buttonLTPressed == false){
 
-	// 	moveMotor(180,150); //moveMotor(180,150);
-	// 	digitalWrite(solDrib, HIGH);
-	// 	delay(20);
-	// 	digitalWrite(solGrip, HIGH);
-	// 	delay(70);
-	// 	digitalWrite(solDrib, LOW);
-	// 	delay(20);
+// 	moveMotor(180,150); //moveMotor(180,150);
+// 	digitalWrite(solDrib, HIGH);
+// 	delay(20);
+// 	digitalWrite(solGrip, HIGH);
+// 	delay(70);
+// 	digitalWrite(solDrib, LOW);
+// 	delay(20);
 
-	// 	buttonLTPressed = true;
+// 	buttonLTPressed = true;
 
-	// }else if(button.LT == 0){
+// }else if(button.LT == 0){
 
-	// 	buttonLTPressed = false;
+// 	buttonLTPressed = false;
 
-	// }
+// }
 
-	// if (button.RT == 1 && buttonPressed == false){
+// if (button.RT == 1 && buttonPressed == false){
 
-	// 	Serial.print(" | button RT |");
-	// 	// moveMotor(180, 150);
-	// 	digitalWrite(solGrip, LOW);
-	// 	delay(10);
-	// 	buttonPressed = true;
+// 	Serial.print(" | button RT |");
+// 	// moveMotor(180, 150);
+// 	digitalWrite(solGrip, LOW);
+// 	delay(10);
+// 	buttonPressed = true;
 
-	// }else if (button.RT == 0 && buttonPressed == true){
+// }else if (button.RT == 0 && buttonPressed == true){
 
-	// 	buttonPressed = false;
+// 	buttonPressed = false;
 
-	// }
-	// if(button.LT == 1 && cmd_to_dribble == 4){
+// }
+// if(button.LT == 1 && cmd_to_dribble == 4){
 
-	// 	Serial.print("| button LT |");
-	// 	digitalWrite(solDrib,LOW);
-	// 	moveBase();
-	// 	delay(20);
-	// 	cmd_to_dribble = 0;
+// 	Serial.print("| button LT |");
+// 	digitalWrite(solDrib,LOW);
+// 	moveBase();
+// 	delay(20);
+// 	cmd_to_dribble = 0;
 
-	// }else if (cmd_to_dribble == 1){
+// }else if (cmd_to_dribble == 1){
 
-	// 	moveMotor(180, 150); //moveMotor(-180, 150);
-	// 	Serial.print("| cmd2dribble 1 |");
-	// 	// if (trig)
+// 	moveMotor(180, 150); //moveMotor(-180, 150);
+// 	Serial.print("| cmd2dribble 1 |");
+// 	// if (trig)
 
-	// }
+// }
 // }
 
 // enum PneumaticState{IDLE, STEP1, STEP2, STEP3, DONE};
@@ -613,31 +688,41 @@ unsigned long stateTime = 0;
 bool RBpressed = false;
 bool prevRBpressed = false;
 
-void shooterMotor(float launch_dt)
+bool LTpressed = false;
+bool prevLTpressed = false;
+
+void shooterMotor()
 {
-	if(button.RB == 1 && prevRBpressed == false)
+
+	if (button.RB)
 	{
-		if(RBpressed == false)
-		{
-			calculate_smooth_vel(value_upper_launcher, 135,launch_dt, 25.0);
-			calculate_smooth_vel(value_lower_launcher, 180, launch_dt, 25.0);
-
-			RBpressed = true;
-		}
-		else
-		{
-			calculate_smooth_vel(value_upper_launcher, 0, launch_dt, 25.0);
-			calculate_smooth_vel(value_lower_launcher, 0, launch_dt, 25.0);
-
-			RBpressed = false;
-
-		}
+		turn_on_roller = true;
 	}
-
-	esc_first.write(value_upper_launcher);
-	esc_second.write(value_lower_launcher);
-	prevRBpressed = button.RB == 1;
+	else if (button.LT)
+	{
+		turn_on_roller = false;
+	}
+	// 	if (button.RB == 1 && prevRBpressed == false && button.LT == 0 && prevLTpressed == false)
+	// 	{
+	// 		if (RBpressed == false)
+	// 		{
+	// 			turn_on_roller = true;
+	// 			RBpressed = true;
+	// 			LTpressed = false;
+	// 		}
+	// 		else if(button.RB == 0 && prevRBpressed == true && buttonLTPressed == 1 && prevLTpressed == false);
+	// 		{
+	// 			turn_on_roller = false;
+	// 			LTpressed = true;
+	// 			RBpressed = false;
+	// 		}
 }
+
+// esc_first.write(value_upper_launcher);
+// esc_second.write(value_lower_launcher);
+// prevRBpressed = button.RB == 1;
+// prevLTpressed = button.LT == 1;
+// }
 
 bool LBpressed = false;
 bool prevLBpressed = false;
@@ -664,21 +749,46 @@ void MotorJump()
 bool Xpressed = false;
 bool prevXpressed = false;
 
-void motorGo()
+bool solenoidActive = false;
+unsigned long solenoidStartTime = 0;
+const unsigned long solenoidDuration = 500;
+
+void slinderGo()
 {
-	if(button.X == 1 && prevXpressed == false)
+	if (button.X == 1 && prevXpressed == false && solenoidActive == false)
 	{
-		LinearMotor(80, 0);
+		digitalWrite(solShoot, HIGH);
+		solenoidStartTime = millis();
+		solenoidActive = true;
 		Xpressed = true;
 	}
-	else
+
+	if (solenoidActive && millis() - solenoidStartTime >= solenoidDuration)
 	{
-		LinearMotor(-80,0);
+		digitalWrite(solShoot, LOW);
+
+		solenoidActive = false;
 		Xpressed = false;
 	}
 
 	prevXpressed = button.X;
 }
+
+// void motorGo()
+// {
+// 	if(button.X == 1 && prevXpressed == false)
+// 	{
+// 		LinearMotor(80, 0);
+// 		Xpressed = true;
+// 	}
+// 	else
+// 	{
+// 		LinearMotor(-80,0);
+// 		Xpressed = false;
+// 	}
+
+// 	prevXpressed = button.X;
+// }
 
 joy joySmoothed;
 void moveBase()
@@ -686,12 +796,9 @@ void moveBase()
 	sensors_event_t event;
 	bno.getEvent(&event, Adafruit_BNO055::VECTOR_EULER);
 
-	Serial.print("imu");
-	Serial.print(event.orientation.x);
-	// Serial.print(",");
-	// Serial.print(event.gyro.z);
-	Serial.println(",");
-
+	// Serial.print("imu");
+	// Serial.print(event.orientation.x);
+	// Serial.println(",");
 
 	unsigned long currT = micros();
 	float deltaT = ((float)(currT - prevT)) / 1.0e6;
@@ -702,7 +809,7 @@ void moveBase()
 
 	calculate_smooth_vel(joySmoothed.axis1_x, joystick.axis1_x, deltaT, 1.5);
 	calculate_smooth_vel(joySmoothed.axis1_y, joystick.axis1_y, deltaT, 1.5);
-	calculate_smooth_vel(joySmoothed.axis0_y, joystick.axis0_y, deltaT, 4.0); 	//5.0
+	calculate_smooth_vel(joySmoothed.axis0_y, joystick.axis0_y, deltaT, 4.0); // 5.0
 	// Serial.print("robot cmdVel=>");
 	// Serial.print(joystick.axis1_x);
 	// Serial.print(",");
@@ -725,9 +832,9 @@ void moveBase()
 		joySmoothed.axis0_y,
 		event.orientation.x);
 
-	float controlled_motor1 = wheel1.control_speed_base(req_rps.motor1, pos[0], deltaT);
-	float controlled_motor2 = wheel2.control_speed_base(req_rps.motor2, pos[1], deltaT);
-	float controlled_motor3 = wheel3.control_speed_base(req_rps.motor3, pos[2], deltaT);
+	float controlled_motor1 = wheel1.control_speed(req_rps.motor1, pos[0], deltaT);
+	float controlled_motor2 = wheel2.control_speed(req_rps.motor2, pos[1], deltaT);
+	float controlled_motor3 = wheel3.control_speed(req_rps.motor3, pos[2], deltaT);
 
 	// Serial.print(req_rps.motor1 * 25);
 	// Serial.println("");
@@ -744,13 +851,22 @@ void moveBase()
 	// Serial.print(req_rps.motor3);
 	// Serial.println(",");
 
-	Serial.print(pos[0]);
-	Serial.println(" ");
-	Serial.print(pos[1]);
-	Serial.println(" ");
-	Serial.print(pos[2]);
-	Serial.println(" ");
-	// Serial.print(toDeg(pos[3]));
+	// Serial.print(pos[0]);
+	// Serial.print(" , ");
+	// Serial.print(pos[1]);
+	// Serial.print(" , ");
+	// Serial.print(pos[2]);
+	// Serial.print(" , ");
+	// Serial.print(poseEnc_up);
+	// Serial.print(" , ");
+	// Serial.print(poseEnc_down);
+	// Serial.println("  ");
+
+	// Serial.print(pos[0]);
+	// Serial.println(" ");
+	// Serial.print(pos[1]);
+	// Serial.println(" ");
+	// Serial.print(pos[2]);
 	// Serial.println(" ");
 
 	float current_rps1 = wheel1.get_filt_vel();
@@ -851,6 +967,32 @@ void readEncoder()
 	else
 	{
 		pos[j]--;
+	}
+}
+
+void readEncoderA()
+{
+	int b = digitalRead(launcher_up_B);
+	if (b > 0)
+	{
+		poseEnc_up--;
+	}
+	else
+	{
+		poseEnc_up++;
+	}
+}
+
+void readEncoderB()
+{
+	int b = digitalRead(launcher_down_B);
+	if (b > 0)
+	{
+		poseEnc_down++;
+	}
+	else
+	{
+		poseEnc_down--;
 	}
 }
 
