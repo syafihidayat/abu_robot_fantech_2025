@@ -43,12 +43,12 @@
 #define drib_ki 0.1  // 0 //0.0001 // 0.00006
 #define drib_kd 0.0 // 0  //0 //0.000015
 
-#define ESC_UP_KP 50 //7//5 //35
-#define ESC_UP_KI 1 //10 //10  //2
+#define ESC_UP_KP 50 //30 //37 //50//7//5 //35
+#define ESC_UP_KI 3 //1.5  //3  //1 //10 //10  //2
 #define ESC_UP_KD 0
 
-#define ESC_DOWN_KP 50 //7 //5 //35
-#define ESC_DOWN_KI 1 //10 //10 //2
+#define ESC_DOWN_KP 50 //30 //37 //50//7 //5 //35
+#define ESC_DOWN_KI 3 //1.5 //3  //1 //10 //10 //2
 #define ESC_DOWN_KD 0
 
 /*
@@ -137,16 +137,18 @@ LEFT  = Y
 
 // #define MOTOR4_PWM -1 // DON'T TOUCH THIS! This is just a placeholder
 
-#define limitTop 99 // 38
-#define limitBottom 39
-#define MOTOR_Up 98  //36
-#define MOTOR_Down 97 //37
+#define limitTop 39 // 38
+#define limitBottom 41
+#define MOTOR_Up 3  //36
+#define MOTOR_Down 4 //37
 
-#define esc_up 24
-#define esc_down 25
+#define esc_up 25
+#define esc_down 24
 
-#define MOTOR_RELOAD_INA  96//28  //24
-#define MOTOR_RELOAD_INB  95//29  //25
+#define Laser 40
+
+// #define MOTOR_RELOAD_INA  96//28  //24
+// #define MOTOR_RELOAD_INB  95//29  //25
 
 // #define proxi_Front 34
 // #define proxi_Behind 26

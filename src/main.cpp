@@ -120,11 +120,11 @@ void setup()
 		analogWriteFrequency(MOTOR_Up, PWM_FREQUENCY);
 		analogWriteFrequency(MOTOR_Down, PWM_FREQUENCY);
 
-		pinMode(MOTOR_RELOAD_INA, OUTPUT);
-		pinMode(MOTOR_RELOAD_INB, OUTPUT);
+		// pinMode(MOTOR_RELOAD_INA, OUTPUT);
+		// pinMode(MOTOR_RELOAD_INB, OUTPUT);
 
-		analogWriteFrequency(MOTOR_RELOAD_INA, PWM_FREQUENCY);
-		analogWriteFrequency(MOTOR_RELOAD_INB, PWM_FREQUENCY);
+		// analogWriteFrequency(MOTOR_RELOAD_INA, PWM_FREQUENCY);
+		// analogWriteFrequency(MOTOR_RELOAD_INB, PWM_FREQUENCY);
 
 		// pinMode(MotorDrib_CW, OUTPUT);
 		// pinMode(MotorDrib_CCW, OUTPUT);
@@ -153,9 +153,12 @@ void setup()
 	pinMode(limitTop, INPUT_PULLUP);
 	pinMode(limitBottom, INPUT_PULLUP);
 
+	pinMode(Laser, OUTPUT);
+
 	pinMode(solShoot, OUTPUT);
 
 	digitalWrite(solShoot, LOW);
+	digitalWrite(Laser, LOW);
 
 	// pinMode(proxi_Front, INPUT_PULLUP);
 	// pinMode(proxi_Behind, INPUT_PULLUP);
@@ -225,11 +228,14 @@ void loop()
 	int limit_A = digitalRead(limitBottom);
 	int limit_B = digitalRead(limitTop);
 
-	if (((limit_A == 1 && limit_B == 0) || (limit_A == 0 && limit_B == 1)) &&
-		!(button.LB == 1))
-	{
-		setMotor(MOTOR_Up, MOTOR_Down, 0);
-	}
+	// if (((limit_A == 1 && limit_B == 0) || (limit_A == 0 && limit_B == 1)) &&
+	// 	!(button.LB == 1))
+	// {
+	// 	setMotor(MOTOR_Up, MOTOR_Down, 0, false);
+	// }
+
+	// analogWrite(MOTOR_Up, fabs(255));
+	// analogWrite(MOTOR_Down, fabs(255));
 
 	if (joy_control[0].available())
 	{
@@ -273,19 +279,24 @@ void loop()
 
 	esc_first.write(abs(launcher_upper_controlled));
 	esc_second.write(abs(launcher_lower_controlled));
-	// Serial.print(200);
+
+	// Serial.print(launcher_up.get_filt_vel());
 	// Serial.print(" , ");
-	Serial.print(launcher_up.get_filt_vel());
-	Serial.print(" , ");
-	Serial.print(launcher_down.get_filt_vel());
-	Serial.print(" , ");
-	Serial.println(0);
+	// Serial.print(launcher_down.get_filt_vel());
+	// Serial.print(" , ");
+	Serial.println();
+
+	launch_prevT = launch_currT;
+
+	// setMotor(MOTOR_Up,MOTOR_Down, -80);
+	// Serial.print(limitTop);
+	// Serial.print(" ");
+	// Serial.print(limitBottom);
+	// Serial.println(" ");
 
 	// Serial.print(poseEnc_up);
 	// Serial.print(" , ");
 	// Serial.println(poseEnc_down);
-
-	launch_prevT = launch_currT;
 
 	// launch_prevT = launch_currT;
 
@@ -696,26 +707,15 @@ void shooterMotor()
 
 	if (button.RB)
 	{
+
 		turn_on_roller = true;
+		digitalWrite(Laser, HIGH);
 	}
 	else if (button.LT)
 	{
 		turn_on_roller = false;
+		digitalWrite(Laser, LOW);
 	}
-	// 	if (button.RB == 1 && prevRBpressed == false && button.LT == 0 && prevLTpressed == false)
-	// 	{
-	// 		if (RBpressed == false)
-	// 		{
-	// 			turn_on_roller = true;
-	// 			RBpressed = true;
-	// 			LTpressed = false;
-	// 		}
-	// 		else if(button.RB == 0 && prevRBpressed == true && buttonLTPressed == 1 && prevLTpressed == false);
-	// 		{
-	// 			turn_on_roller = false;
-	// 			LTpressed = true;
-	// 			RBpressed = false;
-	// 		}
 }
 
 // esc_first.write(value_upper_launcher);
@@ -726,6 +726,7 @@ void shooterMotor()
 
 bool LBpressed = false;
 bool prevLBpressed = false;
+bool turn_on_defense = false;
 
 void MotorJump()
 {
@@ -733,17 +734,63 @@ void MotorJump()
 	{
 		if (LBpressed == false)
 		{
-			Motor_UpDown(-140, 0);
 			LBpressed = true;
 		}
 		else
 		{
-			Motor_UpDown(100, 0);
 			LBpressed = false;
 		}
 	}
-
+	// Serial.println(LBpressed);
 	prevLBpressed = button.LB == 1;
+
+	int limit_A = digitalRead(limitBottom);
+	int limit_B = digitalRead(limitTop);
+	if (LBpressed)
+	{
+
+		
+		if ( limit_B == 0)
+		{
+			setMotor(MOTOR_Up, MOTOR_Down, -50);
+			// LBpressed = true;
+			Serial.print("2");
+		}
+		else
+		{
+			
+			setMotor(MOTOR_Up, MOTOR_Down, -140);
+			// LBpressed = false;
+			Serial.print("1");
+		}
+		
+		// prevLBpressed = button.LB == 1;
+
+	}
+	else if (!LBpressed)
+	{
+		if (limit_A == 0)
+		{
+			setMotor(MOTOR_Up, MOTOR_Down, 0);
+			Serial.print("4");
+		}
+		else
+		{
+
+			setMotor(MOTOR_Up, MOTOR_Down, 80);
+			Serial.print("3");
+		}
+
+		turn_on_defense = false;
+	}
+
+	else
+	{
+
+		setMotor(MOTOR_Up, MOTOR_Down, 0);
+		Serial.print("5");
+	}
+
 }
 
 bool Xpressed = false;
@@ -809,7 +856,7 @@ void moveBase()
 
 	calculate_smooth_vel(joySmoothed.axis1_x, joystick.axis1_x, deltaT, 1.5);
 	calculate_smooth_vel(joySmoothed.axis1_y, joystick.axis1_y, deltaT, 1.5);
-	calculate_smooth_vel(joySmoothed.axis0_y, joystick.axis0_y, deltaT, 4.0); // 5.0
+	calculate_smooth_vel(joySmoothed.axis0_y, joystick.axis0_y, deltaT, 5.0); // 4.0 // 5.0
 	// Serial.print("robot cmdVel=>");
 	// Serial.print(joystick.axis1_x);
 	// Serial.print(",");
@@ -921,6 +968,7 @@ void moveBase()
 
 void setMotor(int cwPin, int ccwPin, float pwmVal)
 {
+
 	if (pwmVal > 0)
 	{
 		analogWrite(cwPin, fabs(pwmVal));
@@ -931,6 +979,7 @@ void setMotor(int cwPin, int ccwPin, float pwmVal)
 		analogWrite(cwPin, 0);
 		analogWrite(ccwPin, fabs(pwmVal));
 	}
+
 	else
 	{
 		analogWrite(cwPin, 0);
